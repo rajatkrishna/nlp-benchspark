@@ -1,0 +1,5 @@
+multiprocess==0.70.15
+psutil==5.9.8
+pyspark==3.3.1
+tabulate
+spark-nlp
