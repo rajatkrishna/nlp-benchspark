@@ -1,0 +1,26 @@
+{
+    "configs": [
+	{
+	    "model_path": "/home/ubuntu/onnx_models/bert-base-cased",
+	    "n_iter": 1,
+	    "input_cols": ["document", "token"],
+	    "batch_sizes": [20, 32, 128, 256],
+	    "seq_lengths": [4, 8, 16],
+	    "profile": true,
+	    "annotator": "sparknlp.annotator.embeddings.bert_embeddings.BertEmbeddings",
+	    "data_path": "/home/ubuntu/conll2003/eng.testb",
+	    "name": "bert-onnx"
+	},
+	{
+	    "model_path": "/home/ubuntu/ov_models/bert-base-cased",
+	    "n_iter": 1,
+	    "input_cols": ["document", "token"],
+	    "batch_sizes": [20, 32, 128, 256],
+	    "seq_lengths": [4, 8, 16],
+	    "profile": true,
+	    "annotator": "sparknlp.annotator.embeddings.bert_embeddings.BertEmbeddings",
+	    "data_path": "/home/ubuntu/conll2003/eng.testb",
+	    "name": "bert-ov"
+	}
+    ]
+}
