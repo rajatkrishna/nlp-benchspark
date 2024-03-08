@@ -48,10 +48,10 @@ class Benchmark:
 
         self.results = dict()
         if self.seq2seq:
-            self.annotator.setInputCols(["corpus"])
+            self.annotator = self.annotator.setInputCols(["corpus"])
         else:
-            self.annotator.setInputCols(self.input_cols)
-        self.annotator.setOutputCol("output")
+            self.annotator = self.annotator.setInputCols(self.input_cols)
+        self.annotator = self.annotator.setOutputCol("output")
         self.res_profile = res_profile
 
     def measure(self, pipeline, func):
