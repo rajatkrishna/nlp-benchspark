@@ -6,7 +6,7 @@ while using ONNX Runtime and Tensorflow for efficient and optimized NLP inferenc
 
 ### Usage
 
-Create a new Python virtual environment and install the dependencies in `requirements.txt`.
+Create a new Python virtual environment and install the dependencies in [requirements.txt](./requirements.txt).
 
 ```
 python3 -m venv create .env
