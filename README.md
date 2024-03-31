@@ -1,10 +1,19 @@
 ## Benchmarks for Spark NLP
 
-Extensible tool for benchmarking NLP inference with [Spark NLP](https://github.com/JohnSnowLabs/spark-nlp).
+Tool for benchmarking NLP inference with [Spark NLP](https://github.com/JohnSnowLabs/spark-nlp).
 Built on top of Apache Spark, SparkNLP provides performant and scalable NLP annotations for Python, R and the JVM ecosystem,
-while using ONNX Runtime and Tensorflow for efficient and optimized NLP inference at scale.
+using OpenVINO, ONNX Runtime and Tensorflow for efficient and optimized NLP inference at scale.
 
-### Usage
+### Usage (spark-submit)
+
+To benchmark an annotator using spark-submit
+
+```
+scalac -classpath "$SPARK_HOME/jars/*;" ./BertEmbeddingsBenchmark.scala -d benchmark.jar
+python3 run_spark_benchmark.py <model_path> <data_path> --jar_path=benchmark.jar
+```
+
+### Usage (pyspark)
 
 Create a new Python virtual environment and install the dependencies in [requirements.txt](./requirements.txt).
 
@@ -15,10 +24,10 @@ source .env/bin/activate
 pip install -r requirements.txt
 ```
 
-To run benchmarks using a custom annotator and dataset, 
+To run benchmarks using a custom dataset, 
 
 ```
-from pybenchmark.benchmark import Benchmark
+from benchmark.pybenchmark import PyBenchmark
 import sparknlp
 
 spark = SparkSession.builder \
@@ -31,12 +40,12 @@ data = CoNLL(exposeSentences=False).readDataSet(spark, '/home/ubuntu/data/conll2
 batches = [2, 4, 6]
 max_seq_lengths = [16, 32, 64]
 
-bm = Benchmark(spark, bert, data, batches, max_seq_lengths)
+bm = PyBenchmark(spark, bert, data, batches, max_seq_lengths)
 bm.run()
 bm.print_results()
 ```
 
-Use the `run_benchmark.py` script to quickly measure the inference performance of a SparkNLP Annotator using a dataset in the CoNLL2003 format. 
+Use the `run_pybenchmark.py` script to measure the inference performance of a SparkNLP Annotator using a dataset in the CoNLL2003 format. 
 
 ```
 usage: run_benchmark.py [-h] [-c CONFIG] [--input_cols INPUT_COLS] [--model_path MODEL_PATH] [--model_name MODEL_NAME] [--batch_sizes BATCH_SIZES] [--seq_lengths SEQ_LENGTHS] [--sparknlp_jar SPARKNLP_JAR] [--is_seq2seq IS_SEQ2SEQ] [--memcpu MEMCPU]
@@ -68,5 +77,3 @@ options:
   --memcpu MEMCPU       Measure memory and cpu usage.
   --n_iter N_ITER       Number of iterations of each case.
 ```
-
-Note: Run multiple benchmarks using [config.json](./config.json).
