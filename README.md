@@ -9,7 +9,7 @@ using OpenVINO, ONNX Runtime and Tensorflow for efficient and optimized NLP infe
 To benchmark an annotator using spark-submit
 
 ```
-scalac -classpath "$SPARK_HOME/jars/*;" ./BertEmbeddingsBenchmark.scala -d benchmark.jar
+scalac -classpath "$SPARK_HOME/jars/*;" ./benchmark/sparknlp/BertEmbeddingsBenchmark.scala -d benchmark.jar
 python3 run_spark_benchmark.py <model_path> <data_path> --jar_path=benchmark.jar
 ```
 
