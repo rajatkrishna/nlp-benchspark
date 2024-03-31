@@ -1,9 +1,8 @@
 import argparse
-import logging
 import json
 from sparknlp import SparkSession
 from sparknlp.training import CoNLL
-from pybenchmark.benchmark import Benchmark
+from benchmark.pybenchmark import PyBenchmark
 
 
 if __name__ == '__main__':
@@ -79,17 +78,18 @@ if __name__ == '__main__':
             data = CoNLL(explodeSentences=False).readDataset(
                 spark_session, data_path)
             try:
-                bm = Benchmark(model_path=model_path, res_profile=memcpu,
-                               spark=spark_session, annotator=annotator_str,
-                               data=data, batch_sizes=batch_sizes,
-                               seq_lengths=seq_lengths, seq2seq=is_seq2seq,
-                               n_iter=n_iter, input_cols=input_cols, pretrained=model_name)
+                bm = PyBenchmark(model_path=model_path, memcpu=memcpu,
+                                 spark=spark_session, annotator=annotator_str,
+                                 data=data, batch_sizes=batch_sizes,
+                                 seq_lengths=seq_lengths, seq2seq=is_seq2seq,
+                                 n_iter=n_iter, input_cols=input_cols, pretrained=model_name,
+                                 name=name)
                 bm.run()
 
                 bm.save_results(f"{annotator_str}-{name}.json")
                 bm.print_results()
             except Exception as e:
-                logging.error(f"Benchmarking {name} failed due to {e}")
+                print(e)
     else:
         assert (args.model_path or args.model_name)
         assert (args.annotator)
@@ -111,10 +111,10 @@ if __name__ == '__main__':
         data = CoNLL(explodeSentences=False).readDataset(
             spark_session, data_path)
 
-        bm = Benchmark(model_path=model_path, res_profile=memcpu,
-                       spark=spark_session, annotator=annotator_str,
-                       data=data, batch_sizes=batch_sizes,
-                       seq2seq=is_seq2seq, seq_lengths=seq_lengths,
-                       n_iter=n_iter, input_cols=input_cols, pretrained=model_name)
+        bm = PyBenchmark(model_path=model_path, memcpu=memcpu,
+                         spark=spark_session, annotator=annotator_str,
+                         data=data, batch_sizes=batch_sizes,
+                         seq2seq=is_seq2seq, seq_lengths=seq_lengths,
+                         n_iter=n_iter, input_cols=input_cols, pretrained=model_name)
         bm.run()
         bm.print_results()
