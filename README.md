@@ -4,6 +4,14 @@ Tool for benchmarking NLP inference with [Spark NLP](https://github.com/JohnSnow
 Built on top of Apache Spark, SparkNLP provides performant and scalable NLP annotations for Python, R and the JVM ecosystem,
 using OpenVINO, ONNX Runtime and Tensorflow for efficient and optimized NLP inference at scale.
 
+### LLama2 in SparkNLP with OpenVINO
+
+Model: [meta-llama/Llama-2-7b-chat-hf](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf)
+
+<img src="https://github.com/rajatkrishna/nlp-benchspark/assets/61770314/14b63022-5780-4b79-9be9-3a66109dc3fd" width="650" height="400">
+
+<img src="https://github.com/rajatkrishna/nlp-benchspark/assets/61770314/763b8eee-ac0b-4dd9-b006-df8ee2384dca" width="650" height="400">
+
 ### Usage (spark-submit)
 
 To benchmark an annotator using spark-submit
