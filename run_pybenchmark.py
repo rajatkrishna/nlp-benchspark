@@ -10,8 +10,8 @@ def parse_config(args) -> dict:
     config = dict()
     if args.model_path:
         config['model_path'] = args.model_path
-    if args.model_name:
-        config['pretrained'] = args.model_name
+    if args.pretrained:
+        config['pretrained'] = args.pretrained
 
     config['annotator'] = args.annotator
     config['n_iter'] = args.n_iter
@@ -31,25 +31,25 @@ def parse_config(args) -> dict:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('annotator', type=str, nargs="?",
-                        help='Fully qualified name of the annotator.')
-    parser.add_argument('--conll', type=str, nargs="?",
-                        help='Path to the CONLL formatted data file.')
+                        help='Fully qualified name of the Spark transformer.')
     parser.add_argument('-c', '--config', type=str,
                         help='Path to benchmark config.')
     parser.add_argument('-p', '--prompt', type=str,
-                        help="Prompt as input dataframe.")
+                        help="Prompt to pass as input dataframe.")
+    parser.add_argument('--conll', type=str,
+                        help='Path to the CONLL formatted data file.')
     parser.add_argument('--input_cols', type=str,
-                        help='The input columns for the annotator.', default='document')
+                        help='Input columns to use for benchmarking.', default='document')
     parser.add_argument('--model_path', type=str,
-                        help='Path to the saved model.')
-    parser.add_argument("--model_name", type=str,
-                        help='Pre-trained model name.')
+                        help='Path to the model to import for benchmarking custom pre-trained models.')
+    parser.add_argument("--pretrained", type=str,
+                        help='Pre-trained model name to download.')
     parser.add_argument('--batch_sizes', type=str,
                         help='Batch sizes to benchmark (pass multiple values as a comma-separated list).')
     parser.add_argument('--input_lengths', type=str,
-                        help='Input lengths to benchmark (pass multiple values as comma-separated list).')
+                        help='Input lengths to benchmark (pass multiple values as a comma-separated list).')
     parser.add_argument('--output_lengths', type=str,
-                        help='Output sequence lengths to benchmark (pass multiple values as comma-separated list).')
+                        help='Output sequence lengths to benchmark (pass multiple values as a comma-separated list).')
     parser.add_argument('--sparknlp_jar', type=str,
                         help='Path to the spark nlp jar file.')
     parser.add_argument('--memcpu', type=bool,
@@ -68,7 +68,11 @@ if __name__ == '__main__':
         .master("local[*]")
 
     if sparknlp_jar_path:
-        session_builder = session_builder.config("spark.jars", sparknlp_jar_path)
+        session_builder = session_builder.config(
+            "spark.jars", sparknlp_jar_path)
+    else:
+        session_builder = session_builder.config(
+            "spark.jars.packages", "com.johnsnowlabs.nlp:spark-nlp_2.12:5.3.3")
     spark_session = session_builder.getOrCreate()
 
     if args.config:
