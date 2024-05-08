@@ -1,31 +1,27 @@
 from importlib import import_module
 from sparknlp import SparkSession
 from sparknlp.base import DocumentAssembler
-import psutil
 import multiprocessing as mp
 from pyspark.ml import Pipeline
 from typing import List, Any
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import substring, col
 import logging
 from .benchmark import Benchmark
-import time
 
 
 class PyBenchmark(Benchmark):
-    def __init__(self, spark: SparkSession,
-                 annotator: Any, data: DataFrame,
-                 batch_sizes: List[int] = [4], seq_lengths: List[int] = [16],
-                 n_iter: int = 1, input_cols: List[str] = None,
-                 seq2seq: bool = False, model_path: str = None,
-                 pretrained: str = None, memcpu: bool = True, name: str = "pybenchmark"):
-        super().__init__(batch_sizes, seq_lengths,
+    def __init__(self, spark: SparkSession, annotator: Any, data: DataFrame, pretrained: str = None,
+                 batch_sizes: List[int] = None, input_lengths: List[int] = None,
+                 seq_lengths: List[int] = None, n_iter: int = 1, input_cols: List[str] = None,
+                 model_path: str = None, memcpu: bool = True, name: str = "pybenchmark",
+                 use_docassembler: bool = False):
+        super().__init__(batch_sizes, input_lengths, seq_lengths,
                          n_iter, input_cols, model_path, memcpu=memcpu, name=name)
         self.spark = spark
         self.data = data
-        self.seq2seq = seq2seq
         self.pretrained = pretrained
         self.annotator = annotator
+        self.use_docassembler = use_docassembler
 
         if isinstance(self.annotator, str):
             module_path, class_name = self.annotator.rsplit(".", 1)
@@ -38,85 +34,69 @@ class PyBenchmark(Benchmark):
             elif pretrained:
                 self.annotator = cls.pretrained(pretrained)
             else:
-                raise ValueError(
-                    "Either local model path or pretrained model name must be provided.")
+                self.annotator = cls.pretrained()
 
-        if self.seq2seq:
-            self.annotator.setInputCols(["corpus"])
+        if self.use_docassembler:
+            self.annotator.setInputCols("corpus")
         else:
-            self.annotator.setInputCols(self.input_cols)
+            self.annotator.setInputCols(input_cols)
         self.annotator.setOutputCol("output")
-
-    def measure_pipeline(self, pipeline, func):
-        result = {}
-        dur_runs = []
-        for _ in range(self.n_iter):
-            start = time.perf_counter_ns() * 1e-9
-            func(pipeline)
-            end = time.perf_counter_ns() * 1e-9
-            dur_runs.append(end - start)
-
-        if self.res_profile:
-            proc = mp.Process(target=func, args=(pipeline,))
-            cpu_percent = []
-            mem_usage = []
-            mem_percent = []
-
-            proc.start()
-            while proc.is_alive():
-                cpu_percent.append(psutil.cpu_percent(percpu=False))
-                mem_usage.append(psutil.virtual_memory().used / 1024 / 1024)
-                mem_percent.append(psutil.virtual_memory().percent)
-                time.sleep(0.1)
-
-            proc.join()
-            if (proc.exitcode > 0):
-                raise ValueError(f"Exited with exit code: {proc.exitcode}")
-
-            result['cpu_percent'] = cpu_percent
-            result['mem_usage'] = mem_usage
-            result['mem_percent'] = mem_percent
-            result['peak_memory'] = max(mem_usage)
-
-        result['duration'] = sum(dur_runs) / len(dur_runs)
-        result['per_duration'] = dur_runs
-        return result
 
     def run(self):
         for batch_size in self.batch_sizes:
-            self.results[batch_size] = {}
-            for seq_length in self.seq_lengths:
-                logging.info(
-                    f"Benchmarking {self.annotator.name}, batch size: {batch_size}, sequence length: {seq_length}...")
-
-                self.annotator = self.annotator \
-                    .setBatchSize(batch_size)
-
-                input_data = None
-                pipeline = None
-                if self.seq2seq:
-                    input_data = self.data.withColumn(
-                        self.input_cols[0], substring(col(self.input_cols[0]), 0, seq_length))
-                    document_assembler = DocumentAssembler().setInputCol(
-                        self.input_cols[0]).setOutputCol("corpus")
-
-                    pipeline = Pipeline().setStages(
-                        [document_assembler, self.annotator])
-                elif hasattr(self.annotator, "setMaxSentenceLength"):
-                    input_data = self.data
-                    self.annotator = self.annotator.setMaxSentenceLength(
-                        seq_length)
-                    pipeline = Pipeline().setStages([self.annotator])
+            annotator = self.annotator.setBatchSize(batch_size)
+            if batch_size not in self.results:
+                self.results[batch_size] = {}
+            for input_length in self.input_lengths:
+                if hasattr(annotator, "setMaxSentenceLength"):
+                    annotator = annotator.setMaxSentenceLength(
+                        input_length)
                 else:
-                    raise Exception("Failed to set seq length.")
+                    logging.debug("Failed to set max input length.")
+                    input_length = -1
 
-                pipeline = pipeline.fit(input_data).transform(input_data)
+                if input_length not in self.results[batch_size]:
+                    self.results[batch_size][input_length] = {}
+                for seq_length in self.seq_lengths:
+                    if hasattr(annotator, "setMaxOutputLength"):
+                        annotator = annotator.setMaxOutputLength(
+                            seq_length)
+                    else:
+                        logging.debug("Failed to set max output length.")
+                        seq_length = -1
 
-                def benchmark_pipeline(pipeline):
-                    pipeline.write.mode("overwrite").parquet(
-                        "./tmp_bm")
+                    logging.info(
+                        f"Benchmarking {annotator.name}, batch size: {batch_size}, input length: {input_length}, sequence length: {seq_length}...")
 
-                self.results[batch_size][seq_length] = self.measure_pipeline(
-                    pipeline, benchmark_pipeline)
-                logging.info(
-                    f"Took an average of {self.results[batch_size][seq_length]['duration']:.3f} seconds")
+                    if seq_length in self.results[batch_size][input_length]:
+                        logging.info("Already benchmarked, skipping...")
+                        continue
+
+                    if self.use_docassembler:
+                        document_assembler = DocumentAssembler().setInputCol(
+                            self.input_cols[0]).setOutputCol("corpus")
+
+                        pipeline = Pipeline().setStages(
+                            [document_assembler, annotator])
+                    else:
+                        pipeline = Pipeline().setStages([annotator])
+                    pipeline = pipeline.fit(self.data)
+                    pipeline.transform(self.data).collect()
+
+                    def benchmark_pipeline(pipeline):
+                        pipeline.transform(self.data).collect()
+
+                    result = {}
+                    dur_runs = self.benchmark_time(
+                        benchmark_pipeline, pipeline)
+
+                    if self.res_profile:
+                        proc = mp.Process(
+                            target=benchmark_pipeline, args=(pipeline,))
+                        result = self.res_profile(proc)
+
+                    result['duration'] = sum(dur_runs) / len(dur_runs)
+                    result['per_duration'] = dur_runs
+                    self.results[batch_size][input_length][seq_length] = result
+                    logging.info(
+                        f"Took an average of {self.results[batch_size][input_length][seq_length]['duration']:.3f} seconds")
