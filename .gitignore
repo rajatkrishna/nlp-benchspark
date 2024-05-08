@@ -1,0 +1,5 @@
+.DS_STORE
+.venv
+create
+.metals
+**/__pycache__
