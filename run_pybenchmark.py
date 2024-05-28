@@ -1,12 +1,14 @@
 import argparse
 import json
+
 from sparknlp import SparkSession
 from sparknlp.training import CoNLL
-from benchmark.pybenchmark import PyBenchmark
+
+from benchmark import PyBenchmark
 
 
 def parse_config(args) -> dict:
-    assert (args.annotator)
+    assert args.annotator is not None, "Missing annotator..."
     config = dict()
     if args.model_path:
         config['model_path'] = args.model_path
@@ -18,58 +20,91 @@ def parse_config(args) -> dict:
     config['input_cols'] = [s.strip() for s in args.input_cols.split(",")]
     config['memcpu'] = args.memcpu
 
-    config['batch_sizes'] = [int(s.strip()) for s in args.batch_sizes.split(
-        ",")] if args.batch_sizes else [4]
-    config['input_lengths'] = [int(s.strip()) for s in args.input_lengths.split(
-        ",")] if args.input_lengths else [32]
-    config['seq_lengths'] = [int(s.strip()) for s in args.output_lengths.split(
-        ",")] if args.output_lengths else [32]
+    config['batch_sizes'] = [
+        int(s.strip()) for s in args.batch_sizes.split(",")
+    ] if args.batch_sizes else [4]
+    config['input_lengths'] = [
+        int(s.strip()) for s in args.input_lengths.split(",")
+    ] if args.input_lengths else [16]
+    config['seq_lengths'] = [
+        int(s.strip()) for s in args.output_lengths.split(",")
+    ] if args.output_lengths else [16]
 
     return config
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('annotator', type=str, nargs="?",
+    parser.add_argument('annotator',
+                        type=str,
+                        nargs="?",
                         help='Fully qualified name of the Spark transformer.')
-    parser.add_argument('-c', '--config', type=str,
+    parser.add_argument('-c',
+                        '--config',
+                        type=str,
                         help='Path to benchmark config.')
-    parser.add_argument('-p', '--prompt', type=str,
+    parser.add_argument('-p',
+                        '--prompt',
+                        type=str,
                         help="Prompt to pass as input dataframe.")
-    parser.add_argument('--conll', type=str,
+    parser.add_argument('--conll',
+                        type=str,
                         help='Path to the CONLL formatted data file.')
-    parser.add_argument('--input_cols', type=str,
-                        help='Input columns to use for benchmarking.', default='document')
-    parser.add_argument('--model_path', type=str,
-                        help='Path to the model to import for benchmarking custom pre-trained models.')
-    parser.add_argument("--pretrained", type=str,
-                        help='Pre-trained model name to download.')
-    parser.add_argument('--batch_sizes', type=str,
-                        help='Batch sizes to benchmark (pass multiple values as a comma-separated list).')
-    parser.add_argument('--input_lengths', type=str,
-                        help='Input lengths to benchmark (pass multiple values as a comma-separated list).')
-    parser.add_argument('--output_lengths', type=str,
-                        help='Output sequence lengths to benchmark (pass multiple values as a comma-separated list).')
-    parser.add_argument('--sparknlp_jar', type=str,
-                        help='Path to the spark nlp jar file.')
-    parser.add_argument('--memcpu', type=bool,
-                        help='Measure memory and cpu usage.', default=False)
+    parser.add_argument('--input_cols',
+                        type=str,
+                        help='Input columns to use for benchmarking.',
+                        default='document')
     parser.add_argument(
-        "--n_iter",
-        type=int,
-        help="Number of iterations of each case.",
-        default=1
+        '--model_path',
+        type=str,
+        help=
+        'Path to the model to import for benchmarking custom pre-trained models.'
     )
+    parser.add_argument("--pretrained",
+                        type=str,
+                        help='Pre-trained model name to download.')
+    parser.add_argument(
+        '--batch_sizes',
+        type=str,
+        help=
+        'Batch sizes to benchmark (pass multiple values as a comma-separated list).'
+    )
+    parser.add_argument(
+        '--input_lengths',
+        type=str,
+        help=
+        'Input lengths to benchmark (pass multiple values as a comma-separated list).'
+    )
+    parser.add_argument(
+        '--output_lengths',
+        type=str,
+        help=
+        'Output sequence lengths to benchmark (pass multiple values as a comma-separated list).'
+    )
+    parser.add_argument('--sparknlp_jar',
+                        type=str,
+                        help='Path to the spark nlp jar file.')
+    parser.add_argument('--memcpu',
+                        type=bool,
+                        help='Measure memory and cpu usage.',
+                        default=False)
+    parser.add_argument("--n_iter",
+                        type=int,
+                        help="Number of iterations of each case.",
+                        default=1)
 
     args = parser.parse_args()
+
     sparknlp_jar_path = args.sparknlp_jar
     session_builder = SparkSession.builder \
         .appName("BenchmarkApp") \
-        .master("local[*]")
+        .master("local[*]") \
+        .config("spark.executor.memory", "14G") \
+        .config("spark.driver.memory", "12G")
 
     if sparknlp_jar_path:
-        session_builder = session_builder.config(
-            "spark.jars", sparknlp_jar_path)
+        session_builder = session_builder.config("spark.jars",
+                                                 sparknlp_jar_path)
     else:
         session_builder = session_builder.config(
             "spark.jars.packages", "com.johnsnowlabs.nlp:spark-nlp_2.12:5.3.3")
@@ -80,15 +115,16 @@ if __name__ == '__main__':
             confs = json.load(f)
 
         for benchmark_conf in confs['configs']:
-            assert ('model_path' in benchmark_conf or 'pretrained' in benchmark_conf)
-            assert ('annotator' in benchmark_conf)
+            assert 'model_path' in benchmark_conf or 'pretrained' in benchmark_conf
+            assert 'annotator' in benchmark_conf
 
             data_path = benchmark_conf['conll']
             data = CoNLL(explodeSentences=False).readDataset(
                 spark_session, data_path)
             try:
                 bm = PyBenchmark(spark=spark_session,
-                                 data=data, **benchmark_conf)
+                                 data=data,
+                                 **benchmark_conf)
                 bm.run()
                 bm.save_results()
                 bm.print_results()
@@ -98,17 +134,19 @@ if __name__ == '__main__':
         benchmark_conf = parse_config(args)
         if args.prompt:
             data_str = args.prompt
-            data = spark_session.createDataFrame(
-                [["Hey there"]]).toDF("document")
-            bm = PyBenchmark(spark=spark_session, data=data,
-                             use_docassembler=True, **benchmark_conf)
+            data = spark_session.createDataFrame([["Hey there"]
+                                                  ]).toDF("document")
+            bm = PyBenchmark(spark=spark_session,
+                             data=data,
+                             use_docassembler=True,
+                             **benchmark_conf)
         elif args.conll:
             data_path = args.conll
             data = CoNLL(explodeSentences=False).readDataset(
                 spark_session, data_path)
             bm = PyBenchmark(spark=spark_session, data=data, **benchmark_conf)
         else:
-            raise ValueError("No data provided...")
+            raise ValueError("No benchmark data provided...")
 
         bm.run()
         bm.print_results()
