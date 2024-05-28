@@ -1,17 +1,26 @@
 import json
+import logging
 import time
-import psutil
-import multiprocessing as mp
-from abc import abstractmethod, ABC
-from tabulate import tabulate
+from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import List
 
+from tabulate import tabulate
+
+logging.getLogger(__name__).setLevel(logging.DEBUG)
+
 
 class Benchmark(ABC):
-    def __init__(self, batch_sizes: List[int] = None, input_lengths: List[int] = None,
-                 seq_lengths: List[int] = None, n_iter: int = 1, input_cols: List[str] = None,
-                 model_path: str = None, memcpu: bool = False, name: str = "benchmark"):
+
+    def __init__(self,
+                 batch_sizes: List[int] = None,
+                 input_lengths: List[int] = None,
+                 seq_lengths: List[int] = None,
+                 n_iter: int = 1,
+                 input_cols: List[str] = None,
+                 model_path: str = None,
+                 memcpu: bool = False,
+                 name: str = "benchmark"):
         self.batch_sizes = batch_sizes if batch_sizes else [4]
         self.input_lengths = input_lengths if input_lengths else [16]
         self.seq_lengths = seq_lengths if seq_lengths else [16]
@@ -22,45 +31,53 @@ class Benchmark(ABC):
         self.name = name
 
         self.results = dict()
+        self.bm_process = None
         super().__init__()
 
     @abstractmethod
-    def run(self):
+    def _run_iter(self, batch_size: int, input_length: int,
+                  output_length: int):
         pass
 
-    def benchmark_time(self, func, args):
-        result = {}
-        dur_runs = []
-        for _ in range(self.n_iter):
-            start = time.perf_counter_ns() * 1e-9
-            func(args)
-            end = time.perf_counter_ns() * 1e-9
-            dur_runs.append(end - start)
+    @abstractmethod
+    def measure_resource_usage(self, batch_size: int, input_length: int,
+                               output_length: int):
+        pass
 
-        return dur_runs
+    def run(self):
+        for batch_size in self.batch_sizes:
+            if batch_size not in self.results:
+                self.results[batch_size] = {}
+            for input_length in self.input_lengths:
+                if input_length not in self.results[batch_size]:
+                    self.results[batch_size][input_length] = {}
+                for seq_length in self.seq_lengths:
+                    if seq_length in self.results[batch_size][input_length]:
+                        logging.info("Already benchmarked, skipping...")
+                        continue
 
-    def profile_res(self, proc: mp.Process) -> dict:
-        cpu_percent = []
-        mem_usage = []
-        mem_percent = []
+                    dur_runs = []
+                    pipeline_durs = []
+                    for _ in range(self.n_iter):
+                        start = time.perf_counter_ns() * 1e-9
+                        pipeline_dur = self._run_iter(batch_size, input_length,
+                                                      seq_length)
+                        end = time.perf_counter_ns() * 1e-9
+                        dur_runs.append(end - start)
+                        if pipeline_dur is not None:
+                            pipeline_durs.append(pipeline_dur)
 
-        proc.start()
-        while proc.is_alive():
-            cpu_percent.append(psutil.cpu_percent(percpu=False))
-            mem_usage.append(psutil.virtual_memory().used / 1024 / 1024)
-            mem_percent.append(psutil.virtual_memory().percent)
-            time.sleep(0.1)
+                    result = dict()
+                    if self.res_profile:
+                        result = self.measure_resource_usage(
+                            batch_size, input_length, seq_length)
 
-        proc.join()
-        if (proc.exitcode > 0):
-            raise ValueError(f"Exited with exit code: {proc.exitcode}")
-
-        result = dict()
-        result['cpu_percent'] = cpu_percent
-        result['mem_usage'] = mem_usage
-        result['mem_percent'] = mem_percent
-        result['peak_memory'] = max(mem_usage)
-        return result
+                    result['duration'] = sum(dur_runs) / len(dur_runs)
+                    result['per_duration'] = dur_runs
+                    self.results[batch_size][input_length][seq_length] = result
+                    logging.info(
+                        f"Took an average of {self.results[batch_size][input_length][seq_length]['duration']:.3f} seconds"
+                    )
 
     def make_results(self):
         res = dict()
@@ -73,20 +90,22 @@ class Benchmark(ABC):
                     if self.res_profile:
                         res["Peak CPU%"] = res.get(
                             "Peak CPU%", []) + [max(seq_res['cpu_percent'])]
-                        res["Avg CPU%"] = res.get(
-                            "Avg CPU%", []) + [sum(seq_res['cpu_percent']) / len(seq_res['cpu_percent'])]
-                        # for i, cpu in enumerate(zip(*seq_res['cpu_percent'])):
-                        #     res[f"Avg CPU % (CPU {i})"] = res.get(
-                        #         f"Avg CPU % (CPU {i})", []) + [sum(cpu) / len(cpu)]
+                        res["Avg CPU%"] = res.get("Avg CPU%", []) + [
+                            sum(seq_res['cpu_percent']) /
+                            len(seq_res['cpu_percent'])
+                        ]
                         res["Peak Memory (MB)"] = res.get(
                             "Peak Memory (MB)", []) + [seq_res['peak_memory']]
-                    res['Duration (s)'] = res.get(
-                        "Duration (s)", []) + [seq_res['duration']]
+                    res['Duration (s)'] = res.get("Duration (s)",
+                                                  []) + [seq_res['duration']]
 
         return res
 
     def print_results(self):
-        print(tabulate(self.make_results(), headers="keys", tablefmt="fancy_grid"))
+        print(
+            tabulate(self.make_results(),
+                     headers="keys",
+                     tablefmt="fancy_grid"))
 
     def save_results(self, file_name: str = None):
         if file_name is None:
