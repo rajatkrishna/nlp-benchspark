@@ -58,7 +58,7 @@ class PyBenchmark(Benchmark):
         result = dict()
         result['cpu_percent'] = res_monitor.cpu_percent
         result['mem_usage'] = res_monitor.mem_kb
-        result['peak_memory'] = max(result['mem_usage'])
+        result['peak_memory'] = max(result['mem_usage']) / 1024
         return result
 
     def _run_iter(self, batch_size: int, input_length: int,

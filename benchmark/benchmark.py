@@ -1,4 +1,4 @@
-import json
+import csv
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -20,7 +20,7 @@ class Benchmark(ABC):
                  input_cols: List[str] = None,
                  model_path: str = None,
                  memcpu: bool = False,
-                 name: str = "benchmark"):
+                 name: str = "spark-benchmark"):
         self.batch_sizes = batch_sizes if batch_sizes else [4]
         self.input_lengths = input_lengths if input_lengths else [16]
         self.seq_lengths = seq_lengths if seq_lengths else [16]
@@ -79,7 +79,7 @@ class Benchmark(ABC):
                         f"Took an average of {self.results[batch_size][input_length][seq_length]['duration']:.3f} seconds"
                     )
 
-    def make_results(self):
+    def print_results(self):
         res = dict()
         for batch, batch_res in self.results.items():
             for inp, inp_res in batch_res.items():
@@ -98,18 +98,36 @@ class Benchmark(ABC):
                             "Peak Memory (MB)", []) + [seq_res['peak_memory']]
                     res['Duration (s)'] = res.get("Duration (s)",
                                                   []) + [seq_res['duration']]
-
-        return res
-
-    def print_results(self):
-        print(
-            tabulate(self.make_results(),
-                     headers="keys",
-                     tablefmt="fancy_grid"))
+        print(tabulate(res, headers="keys", tablefmt="fancy_grid"))
 
     def save_results(self, file_name: str = None):
         if file_name is None:
-            file_name = f'./{self.name}-{datetime.now().strftime("%m-%d-%Y")}.json'
+            file_name = f'./{self.name}-{datetime.now().strftime("%m-%d-%Y")}'
+        with open(f"{file_name}.csv", 'w') as file:
+            csvwriter = csv.writer(file)
 
-        with open(file_name, 'w') as file:
-            json.dump(self.results, file)
+            headers = [
+                'Batch', 'Input Length', 'Output Length', 'Duration (s)'
+            ]
+            csvwriter.writerow(headers)
+            for batch, batch_res in self.results.items():
+                for inp, inp_res in batch_res.items():
+                    for seq, seq_res in inp_res.items():
+                        row = [batch, inp, seq, seq_res['duration']]
+                        csvwriter.writerow(row)
+
+        if self.res_profile:
+            with open(f"{file_name}-resource-usage.csv", 'w') as file:
+                csvwriter = csv.writer(file)
+                headers = [
+                    'Batch', 'Input Length', 'Output Length', 'CPU Usage (%)',
+                    'Memory Usage (MB)'
+                ]
+                csvwriter.writerow(headers)
+                for batch, batch_res in self.results.items():
+                    for inp, inp_res in batch_res.items():
+                        for seq, seq_res in inp_res.items():
+                            for cpu, mem in zip(seq_res['cpu_percent'],
+                                                seq_res['mem_usage']):
+                                csvwriter.writerow(
+                                    [batch, inp, seq, cpu, mem / 1024])
