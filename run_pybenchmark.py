@@ -89,7 +89,7 @@ class PyBenchmark(benchmark.BaseBenchmark):
 
         annotator.setOutputCol("output")
         pipeline = pipeline.fit(self.data)
-        pipeline.transform(self.data).collect()
+        pipeline.transform(self.data).select("output").show()
 
 
 def parse_config(args) -> dict:
