@@ -52,9 +52,8 @@ class SparkBenchmark(benchmark.BaseBenchmark):
 
     def measure_resource_usage(self, batch_size, input_length, output_length):
         cmd = [
-            "spark-submit", "--executor-memory", "15G", "--driver-memory",
-            "12G", "--jars", self.sparknlp_jar, "--class", self.classname,
-            self.jar_path, self.model_path, self.data_path,
+            "spark-submit", "--jars", self.sparknlp_jar, "--class",
+            self.classname, self.jar_path, self.model_path, self.data_path,
             str(batch_size),
             str(output_length), ",".join(self.input_cols)
         ]
