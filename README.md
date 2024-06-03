@@ -1,21 +1,10 @@
-## Benchmarks for Spark NLP
+# Spark NLP Benchmarks
 
-Python Tool for benchmarking NLP inference with [Spark NLP](https://github.com/JohnSnowLabs/spark-nlp) using `psutil`.
-Built on top of Apache Spark, SparkNLP provides performant and scalable NLP annotations for Python, R and the JVM ecosystem, using OpenVINO, ONNX Runtime and Tensorflow for efficient and optimized NLP inference at scale. It offers several tasks including tokenization, NER and summarization. You can find a full list of supported feature [here](https://github.com/JohnSnowLabs/spark-nlp?tab=readme-ov-file#features).
+Lightweight, extensible benchmarking tool for [Spark NLP](https://github.com/JohnSnowLabs/spark-nlp) transformers using `psutil`. The motivation behind this was to execute quick, reproducible benchmarks for LLM inference across different inference frameworks utilized in Spark NLP- Tensorflow, ONNX and OpenVINO.
 
-The following are some transformers benchmarked as part of the [OpenVINO-SparkNLP Integration](https://github.com/JohnSnowLabs/spark-nlp/pull/14200). 
+Benchmarking can be done across batch sizes and input/output sequence lengths (when configurable), using either a custom dataset in the CoNLL format, or a prompt passed with the `--prompt` flag, which is converted into a Spark dataframe. The `run_pybenchmark` script can be used to run benchmarks with PySpark, while the `run_spark_benchmark` script can benchmark jobs submitted with `spark-submit`.
 
-### LLama2
-
-- Transformer: LLAMA2Transformer
-  
-  Model: [meta-llama/Llama-2-7b-chat-hf](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf)
-
-  <img src="https://github.com/rajatkrishna/nlp-benchspark/assets/61770314/14b63022-5780-4b79-9be9-3a66109dc3fd" width="500" height="300">
-
-  <img src="https://github.com/rajatkrishna/nlp-benchspark/assets/61770314/763b8eee-ac0b-4dd9-b006-df8ee2384dca" width="500" height="300">
-
-## Usage
+## Instructions
 
 Create a new Python virtual environment and install the dependencies in [requirements.txt](./requirements.txt).
 
@@ -30,85 +19,111 @@ pip install -r requirements.txt
 
 ### Requirements
 
-- JDK 8 or higher
+- JDK 8 or 11
 - Python 3.11
 
-To run with PySpark, first install SparkNLP and PySpark from PyPI with the following command:
+Ensure that Spark NLP and PySpark are installed and configured. For a fresh install via PyPI, use the following command with the appropriate versions:
 
 ```
 pip install spark-nlp==5.3.3 pyspark==3.5.1
 ```
 
-Use the `run_pybenchmark.py` script to benchmark a Spark NLP transformer in pyspark. You can find a full list of supported Spark NLP transformers [here](https://sparknlp.org/docs/en/annotators#available-transformers).
+Use the `run_pybenchmark.py` script to run a quick benchmark with a Spark NLP transformer. You can find a full list of supported Spark NLP transformers [here](https://sparknlp.org/docs/en/annotators#available-transformers).
 
 ```
 $ python3 run_pybenchmark.py sparknlp.annotator.LLAMA2Transformer 
-    -p "OpenVINO integration with SparkNLP enables faster inference, easier model export and quantization capabilities."
+    -p "Hello World!"
 ```
 
-You can also use a dataset in the CoNLL format by passing the path to the data file with the `--conll` argument, use a local SparkNLP jar by passing the `--sparknlp_jar` argument and import a custom exported model into its corresponding Spark transformer using the `--model_path` argument. The following is a list of all supported parameters.
+You can import a custom pre-trained model into the corresponding Spark transformer using the `--model_path` argument. The raw benchmark results are exported to csv format after benchmarking.
+
+The following is a list of all supported args.
 
 ```
-usage: run_pybenchmark.py [-h] [-c CONFIG] [-p PROMPT] [--conll CONLL] [--input_cols INPUT_COLS] [--model_path MODEL_PATH]
-                          [--pretrained PRETRAINED] [--batch_sizes BATCH_SIZES] [--input_lengths INPUT_LENGTHS]
-                          [--output_lengths OUTPUT_LENGTHS] [--sparknlp_jar SPARKNLP_JAR] [--memcpu MEMCPU] [--n_iter N_ITER]
-                          [annotator]
+usage: run_pybenchmark.py [options] annotator
 
 positional arguments:
   annotator             Fully qualified name of the Spark transformer.
 
 options:
   -h, --help            show this help message and exit
-  -c CONFIG, --config CONFIG
-                        Path to benchmark config.
   -p PROMPT, --prompt PROMPT
-                        Prompt to pass as input dataframe.
-  --conll CONLL         Path to the CONLL formatted data file.
+                        Optional prompt to pass as input dataframe.
+  --conll CONLL         Path to the CONLL formatted data file. Either prompt or data file must be provided.
+  --batch_sizes BATCH_SIZES
+                        Batch sizes to benchmark (pass multiple values as a comma-separated list). Default [4].
+  --input_lengths INPUT_LENGTHS
+                        Input lengths to benchmark (pass multiple values as a comma-separated list). Default [16].
+  --output_lengths OUTPUT_LENGTHS
+                        Output sequence lengths to benchmark (pass multiple values as a comma-separated list). Default [16].
   --input_cols INPUT_COLS
                         Input columns to use for benchmarking.
   --model_path MODEL_PATH
-                        Path to the model to import for benchmarking custom pre-trained models.
+                        Path to the model to import for benchmarking with pre-trained models.
   --pretrained PRETRAINED
                         Pre-trained model name to download.
-  --batch_sizes BATCH_SIZES
-                        Batch sizes to benchmark (pass multiple values as a comma-separated list).
-  --input_lengths INPUT_LENGTHS
-                        Input lengths to benchmark (pass multiple values as a comma-separated list).
-  --output_lengths OUTPUT_LENGTHS
-                        Output sequence lengths to benchmark (pass multiple values as a comma-separated list).
   --sparknlp_jar SPARKNLP_JAR
                         Path to the spark nlp jar file.
-  --memcpu MEMCPU       Measure memory and cpu usage.
+  --resource_usage RESOURCE_USAGE
+                        Measure memory and cpu usage.
   --n_iter N_ITER       Number of iterations of each case.
 ```
 
-To run custom benchmarks, 
+To benchmark custom pipelines, extend the `benchmark.BaseBenchmark` class and provide the implementation for a single iteration in the `run_iter` method.
 
 ```
-from benchmark.pybenchmark import PyBenchmark
-import sparknlp
+import benchmark
 
-spark = SparkSession.builder \
-    .appName("BenchmarkApp") \
-    .master("local[*]") \
-    .getOrCreate()
-bert = BertEmbeddings.loadSavedModel('/home/ubuntu/models/bert-large-uncased', spark)
-data = CoNLL(exposeSentences=False).readDataSet(spark, '/home/ubuntu/data/conll2003/eng.traina')
+class CustomBenchmark(benchmark.BaseBenchmark):
 
-batches = [2, 4, 6]
-max_seq_lengths = [16, 32, 64]
+  def __init__(self):
+    batch_sizes = [2, 4]
+    input_lengths = [16, 32]
+    output_lengths = [16, 32]
+    n_iter = 1
+    super().__init__(batch_sizes, input_lengths, output_lengths, n_iter)
 
-bm = PyBenchmark(spark, bert, data, batches, max_seq_lengths)
+  def run_iter(self, batch_size: int, input_length: int, output_length: int):
+    # provided impl
+
+bm = CustomBenchmark()
 bm.run()
 bm.print_results()
 ```
 
+### Spark-submit
 
-### Usage (spark-submit)
-
-To benchmark an annotator using spark-submit
+To benchmark an annotator using spark-submit, compile the benchmark script first. Sample scripts can be found [here](./benchmark/sparknlp). 
 
 ```
 scalac -classpath "$SPARK_HOME/jars/*;" ./benchmark/sparknlp/BertEmbeddingsBenchmark.scala -d benchmark.jar
-python3 run_spark_benchmark.py <model_path> <data_path> --jar_path=benchmark.jar
+python3 run_spark_benchmark benchmark.jar BertEmbeddingsBenchmark <path-to-sparknlp-jar>
+```
+
+Use the `run_spark_benchmark` script to run.
+
+```
+usage: run_spark_benchmark.py [options] jar_path classname sparknlp_jar
+
+positional arguments:
+  jar_path              Path to the compiled jar file.
+  classname             Benchmark script main class name.
+  sparknlp_jar          Path to the spark nlp jar file.
+
+options:
+  -h, --help            show this help message and exit
+  --batch_sizes BATCH_SIZES
+                        Batch sizes to benchmark (pass multiple values as a comma-separated list). Default [4].
+  --input_lengths INPUT_LENGTHS
+                        Input lengths to benchmark (pass multiple values as a comma-separated list). Default [16].
+  --output_lengths OUTPUT_LENGTHS
+                        Output sequence lengths to benchmark (pass multiple values as a comma-separated list). Default [16].
+  --model_path MODEL_PATH
+                        Path to the model to import for benchmarking custom pre-trained models.
+  --conll CONLL         Path to the CONLL formatted data file.
+  --input_cols INPUT_COLS
+                        Input columns to use for benchmarking.
+  --resource_usage RESOURCE_USAGE
+                        Measure memory and cpu usage.
+  --n_iter N_ITER       Number of iterations of each case.
 ```
