@@ -48,8 +48,7 @@ class SparkBenchmark(benchmark.BaseBenchmark):
 
         result = subprocess.run(cmd)
         if result.returncode != 0:
-            return False
-        return True
+            raise ValueError("Process exited wih non-zero return code...")
 
     def measure_resource_usage(self, batch_size, input_length, output_length):
         cmd = [
