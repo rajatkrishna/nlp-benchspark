@@ -6,11 +6,12 @@ from datetime import datetime
 from typing import List
 
 from tabulate import tabulate
+import benchmark
 
 logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 
-class Benchmark(ABC):
+class BaseBenchmark(ABC):
 
     def __init__(self,
                  batch_sizes: List[int] = None,
@@ -21,7 +22,7 @@ class Benchmark(ABC):
                  model_path: str = None,
                  memcpu: bool = False,
                  name: str = "spark-benchmark"):
-        self.batch_sizes = batch_sizes if batch_sizes else [4]
+        self.batch_sizes = batch_sizes if batch_sizes else [1]
         self.input_lengths = input_lengths if input_lengths else [16]
         self.seq_lengths = seq_lengths if seq_lengths else [16]
         self.n_iter = n_iter
@@ -31,20 +32,35 @@ class Benchmark(ABC):
         self.name = name
 
         self.results = dict()
-        self.bm_process = None
         super().__init__()
 
     @abstractmethod
-    def _run_iter(self, batch_size: int, input_length: int,
-                  output_length: int):
+    def run_iter(self, batch_size: int, input_length: int, output_length: int):
         pass
 
-    @abstractmethod
     def measure_resource_usage(self, batch_size: int, input_length: int,
                                output_length: int):
-        pass
+        res_monitor = benchmark.SystemMonitor()
+        result = dict()
+
+        res_monitor.start()
+        try:
+            self.run_iter(batch_size, input_length, output_length)
+        except Exception as e:
+            print("Resource measurement failed...", e)
+            return result
+        finally:
+            res_monitor.stop()
+            res_monitor.join()
+
+        result['cpu_percent'] = res_monitor.cpu_percent
+        result['mem_usage'] = res_monitor.mem_kb
+        result['peak_memory'] = max(result['mem_usage']) / 1024
+        return result
 
     def run(self):
+        failed = 0
+        num_runs = 0
         for batch_size in self.batch_sizes:
             if batch_size not in self.results:
                 self.results[batch_size] = {}
@@ -57,27 +73,32 @@ class Benchmark(ABC):
                         continue
 
                     dur_runs = []
-                    pipeline_durs = []
                     for _ in range(self.n_iter):
                         start = time.perf_counter_ns() * 1e-9
-                        pipeline_dur = self._run_iter(batch_size, input_length,
-                                                      seq_length)
+                        success = True
+                        try:
+                            self.run_iter(batch_size, input_length, seq_length)
+                        except Exception:
+                            success = False
                         end = time.perf_counter_ns() * 1e-9
-                        dur_runs.append(end - start)
-                        if pipeline_dur is not None:
-                            pipeline_durs.append(pipeline_dur)
+                        if success:
+                            dur_runs.append(end - start)
+                        else:
+                            failed += 1
 
                     result = dict()
                     if self.res_profile:
                         result = self.measure_resource_usage(
                             batch_size, input_length, seq_length)
 
-                    result['duration'] = sum(dur_runs) / len(dur_runs)
-                    result['per_duration'] = dur_runs
+                    if len(dur_runs) > 0:
+                        result['duration'] = sum(dur_runs) / len(dur_runs)
+                        result['per_duration'] = dur_runs
                     self.results[batch_size][input_length][seq_length] = result
-                    logging.info(
-                        f"Took an average of {self.results[batch_size][input_length][seq_length]['duration']:.3f} seconds"
-                    )
+                    num_runs += 1
+        print(
+            f"Summary: {num_runs} benchmarks ran out of which {failed} failed.."
+        )
 
     def print_results(self):
         res = dict()
